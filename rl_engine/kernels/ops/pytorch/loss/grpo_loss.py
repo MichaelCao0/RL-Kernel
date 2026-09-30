@@ -73,15 +73,18 @@ class NativeGRPOLossOp:
             0, group_id, torch.ones_like(flat_rewards)
         )
         sums = flat_rewards.new_zeros(num_groups).index_add_(0, group_id, flat_rewards)
-        sq_sums = flat_rewards.new_zeros(num_groups).index_add_(
-            0, group_id, flat_rewards * flat_rewards
-        )
 
         means = sums / counts
-        variance = (sq_sums / counts) - means * means
+        # Center before squaring so a large shared reward offset cannot erase
+        # the within-group variance through FP32 subtraction.
+        centered = flat_rewards - means[group_id]
+        centered_sq_sums = flat_rewards.new_zeros(num_groups).index_add_(
+            0, group_id, centered * centered
+        )
+        variance = centered_sq_sums / counts
         stds = variance.clamp_min(eps**2).sqrt()
 
-        return (flat_rewards - means[group_id]) / stds[group_id]
+        return centered / stds[group_id]
 
     @staticmethod
     def expand_advantages(

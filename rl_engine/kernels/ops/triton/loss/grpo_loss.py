@@ -45,13 +45,18 @@ def _group_norm_kernel(
     rewards = tl.load(rewards_ptr + start + offs, mask=keep, other=0.0).to(tl.float32)
 
     count = (end - start).to(tl.float32)
-    mean = tl.sum(rewards, axis=0) / count
-    # Population variance (unbiased=False): E[x^2] - E[x]^2. Masked lanes are 0.
-    sq_mean = tl.sum(rewards * rewards, axis=0) / count
-    std = tl.sqrt(tl.maximum(sq_mean - mean * mean, 0.0))
+    # Round the mean before centering: approximate division followed by a fused
+    # subtraction can leave a nonzero residual even for constant reward groups.
+    mean = tl.div_rn(tl.sum(rewards, axis=0), count)
+    # Center before squaring so a large shared reward offset cannot erase the
+    # within-group variance through FP32 subtraction. Masked lanes must not
+    # contribute ``(0 - mean)^2`` to the variance.
+    centered = tl.where(keep, rewards - mean, 0.0)
+    variance = tl.sum(centered * centered, axis=0) / count
+    std = tl.sqrt(tl.maximum(variance, 0.0))
     std = tl.maximum(std, eps)
 
-    adv = (rewards - mean) / std
+    adv = centered / std
     tl.store(adv_ptr + start + offs, adv, mask=keep)
 
 
