@@ -58,7 +58,13 @@ class NativeGRPOLossOp:
         group_boundaries: Optional[Sequence[int] | torch.Tensor] = None,
         eps: float = 1e-6,
     ) -> torch.Tensor:
-        """Normalize raw per-sequence rewards within each generation group."""
+        """Return a flat FP32 tensor of rewards normalized within each group.
+
+        Specify groups with either ``samples_per_prompt`` or ``group_boundaries``.
+        Compute population variance from centered FP32 rewards to reduce loss
+        of precision for large shared offsets, with ``eps`` as the standard
+        deviation floor.
+        """
         flat_rewards = rewards.reshape(-1).float()
         num_sequences = flat_rewards.numel()
         group_id = self._resolve_group_ids(

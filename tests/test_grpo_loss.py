@@ -157,6 +157,7 @@ def test_variable_group_boundaries():
 def test_group_advantages_is_stable_under_large_reward_offset(
     backend, dtype, offset, step, values, bounds, group_kwargs
 ):
+    """Compare group normalization with an FP64 reference for large-offset rewards."""
     device = "cpu" if backend == "native_cpu" else "cuda"
     op = TritonGRPOLossOp() if backend == "triton" else NativeGRPOLossOp()
     # Keep the reward differences representable in each input dtype.

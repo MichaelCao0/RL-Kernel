@@ -35,6 +35,12 @@ def _group_norm_kernel(
     eps,
     GROUP_BLOCK: tl.constexpr,
 ):
+    """Write FP32 normalized advantages for one reward group per program.
+
+    ``bounds_ptr`` supplies group offsets, and ``GROUP_BLOCK`` covers each
+    group's rewards. Compute centered population variance in FP32, excluding
+    padded lanes, and floor the standard deviation at ``eps``.
+    """
     g = tl.program_id(0)
     start = tl.load(bounds_ptr + g)
     end = tl.load(bounds_ptr + g + 1)
