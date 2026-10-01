@@ -176,6 +176,16 @@ def test_group_advantages_is_stable_under_large_reward_offset(
     torch.testing.assert_close(got, expected, atol=1e-3, rtol=1e-3)
 
 
+@requires_triton_cuda
+def test_triton_constant_non_power_of_two_fp32_rewards_have_zero_advantages():
+    """A constant FP32 group must remain constant after Triton normalization."""
+    rewards = torch.full((7,), 100.1, device="cuda", dtype=torch.float32)
+
+    got = TritonGRPOLossOp().group_advantages(rewards, group_boundaries=[0, 7])
+
+    torch.testing.assert_close(got, torch.zeros_like(got), atol=0.0, rtol=0.0)
+
+
 def test_requires_exactly_one_group_spec():
     op = NativeGRPOLossOp()
     rewards = _batch(seed=6).rewards
