@@ -61,9 +61,10 @@ class NativeGRPOLossOp:
         """Return a flat FP32 tensor of rewards normalized within each group.
 
         Specify groups with either ``samples_per_prompt`` or ``group_boundaries``.
-        Compute population variance from centered FP32 rewards to reduce loss
-        of precision for large shared offsets, with ``eps`` as the standard
-        deviation floor.
+        Subtract each group's first reward before computing its residual mean
+        and population variance in FP32. This avoids rounding a large absolute
+        mean and keeps constant groups exactly zero, with ``eps`` as the
+        standard deviation floor.
         """
         flat_rewards = rewards.reshape(-1).float()
         num_sequences = flat_rewards.numel()
@@ -78,12 +79,14 @@ class NativeGRPOLossOp:
         counts = flat_rewards.new_zeros(num_groups).index_add_(
             0, group_id, torch.ones_like(flat_rewards)
         )
-        sums = flat_rewards.new_zeros(num_groups).index_add_(0, group_id, flat_rewards)
-
-        means = sums / counts
-        # Center before squaring so a large shared reward offset cannot erase
-        # the within-group variance through FP32 subtraction.
-        centered = flat_rewards - means[group_id]
+        # Groups are contiguous. Remove each group's shared offset before
+        # reducing so an unrepresentable absolute mean cannot bias advantages.
+        group_counts = counts.to(torch.long)
+        group_starts = group_counts.cumsum(0) - group_counts
+        deltas = flat_rewards - flat_rewards[group_starts][group_id]
+        delta_sums = flat_rewards.new_zeros(num_groups).index_add_(0, group_id, deltas)
+        delta_means = delta_sums / counts
+        centered = deltas - delta_means[group_id]
         centered_sq_sums = flat_rewards.new_zeros(num_groups).index_add_(
             0, group_id, centered * centered
         )
